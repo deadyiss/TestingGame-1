@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reflex Showdown ⚔</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ═══ SCREEN: LOGIN ════════════════════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+    <div class="card">
+        <div class="logo">
+            <h1>⚔ Reflex Showdown</h1>
+            <p>Duel Refleks Real-Time · Online Multiplayer</p>
+        </div>
+        <div class="field">
+            <label>USERNAME</label>
+            <input id="inp-username" type="text" placeholder="Masukkan nama kamu..." maxlength="20">
+        </div>
+        <button class="btn btn-primary" id="btn-login">MASUK</button>
+    </div>
+</div>
+
+<!-- ═══ SCREEN: MENU ════════════════════════════════════════════════════ -->
+<div id="screen-menu" class="screen">
+    <div class="card">
+        <div class="logo">
+            <h1>⚔ Reflex Showdown</h1>
+            <p id="menu-username-label"></p>
+        </div>
+        <div class="field">
+            <label>JUMLAH RONDE</label>
+            <select id="sel-rounds">
+                <option value="3">3 Ronde</option>
+                <option value="5" selected>5 Ronde (default)</option>
+                <option value="7">7 Ronde</option>
+                <option value="10">10 Ronde</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" id="btn-create-room">+ BUAT ROOM BARU</button>
+        <hr class="divider">
+        <p class="section-title">— ATAU JOIN ROOM —</p>
+        <div class="field">
+            <label>KODE ROOM</label>
+            <input id="inp-room-code" type="text" placeholder="Contoh: AB12CD" maxlength="6"
+                   style="text-transform:uppercase;letter-spacing:4px;font-size:1.2rem;font-weight:700">
+        </div>
+        <button class="btn btn-secondary" id="btn-join-room">GABUNG ROOM</button>
+    </div>
+</div>
+
+<!-- ═══ SCREEN: ROOM (Waiting Room) ════════════════════════════════════ -->
+<div id="screen-room" class="screen">
+    <div class="card">
+        <p class="section-title">ROOM AKTIF</p>
+        <div class="room-code-box">
+            <div>
+                <div style="font-size:.7rem;color:var(--muted);letter-spacing:2px">KODE ROOM</div>
+                <div class="code" id="room-code-display">------</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-copy-code">Salin</button>
+        </div>
+
+        <p class="section-title">PEMAIN (<span id="room-count">0</span>/4)</p>
+        <ul class="player-list" id="room-player-list"></ul>
+
+        <p class="section-title" id="rounds-label">RONDE: 5</p>
+
+        <div id="host-controls">
+            <button class="btn btn-gold" id="btn-start-game" disabled>▶ MULAI GAME</button>
+            <p class="mt-8 text-center" style="font-size:.75rem;color:var(--muted)">
+                Minimal 2 pemain untuk mulai
+            </p>
+        </div>
+        <div id="guest-waiting" style="display:none">
+            <p class="text-center" style="color:var(--muted)">⏳ Menunggu host memulai game...</p>
+        </div>
+
+        <hr class="divider">
+        <button class="btn btn-secondary" id="btn-leave-room">← Tinggalkan Room</button>
+    </div>
+</div>
+
+<!-- ═══ SCREEN: GAME ════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+    <div class="game-header">
+        <span id="game-round-label" class="round-label">Ronde 1/5</span>
+        <span id="game-room-label" style="color:var(--muted)">ROOM: ------</span>
+    </div>
+
+    <div class="arena" id="arena">
+        <div id="signal-display" class="idle">⚔</div>
+        <button id="btn-click" disabled>TUNGGU...</button>
+
+        <!-- Result overlay -->
+        <div class="result-overlay" id="result-overlay"></div>
+    </div>
+
+    <!-- Pemain strip -->
+    <div class="players-strip" id="players-strip"></div>
+
+    <!-- Scoreboard -->
+    <div class="mt-16">
+        <p class="section-title">SKOR SEMENTARA</p>
+        <div class="scoreboard" id="scoreboard"></div>
+    </div>
+</div>
+
+<!-- ═══ SCREEN: STATS ═══════════════════════════════════════════════════ -->
+<div id="screen-stats" class="screen">
+    <div class="winner-banner" id="winner-banner">
+        <h2>🏆 <span id="winner-name">---</span></h2>
+        <p>Pemenang sesi ini!</p>
+    </div>
+
+    <div id="all-player-stats"></div>
+
+    <div class="chart-wrap">
+        <h3>GRAFIK REACTION TIME PER RONDE</h3>
+        <canvas id="rt-chart" height="180"></canvas>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-secondary" id="btn-play-again">▶ Main Lagi</button>
+        <button class="btn btn-primary"   id="btn-back-menu">← Menu Utama</button>
+    </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
