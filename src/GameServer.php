@@ -78,7 +78,8 @@ class GameServer implements MessageComponentInterface
     {
         $name = trim($msg['username'] ?? '');
         if (strlen($name) < 2 || strlen($name) > 20) {
-            return $this->err($conn, 'Username harus 2–20 karakter.');
+            $this->err($conn, 'Username harus 2–20 karakter.');
+            return;
         }
         $name   = htmlspecialchars($name, ENT_QUOTES);
         $player = $this->db->getOrCreatePlayer($name);
@@ -90,7 +91,10 @@ class GameServer implements MessageComponentInterface
 
     private function createRoom(ConnectionInterface $conn, string $id, array $msg): void
     {
-        if (!isset($this->connUser[$id])) return $this->err($conn, 'Login dulu.');
+        if (!isset($this->connUser[$id])) {
+            $this->err($conn, 'Login dulu.');
+            return;
+        }
         $rounds = max(3, min(10, (int)($msg['rounds'] ?? 5)));
         // Generate kode unik 6 huruf kapital
         do { $code = strtoupper(substr(md5(uniqid('rs', true)), 0, 6)); }
@@ -115,13 +119,25 @@ class GameServer implements MessageComponentInterface
 
     private function joinRoom(ConnectionInterface $conn, string $id, array $msg): void
     {
-        if (!isset($this->connUser[$id])) return $this->err($conn, 'Login dulu.');
+        if (!isset($this->connUser[$id])) {
+            $this->err($conn, 'Login dulu.');
+            return;
+        }
         $code = strtoupper(trim($msg['code'] ?? ''));
         $room = $this->rooms[$code] ?? null;
 
-        if (!$room)                                   return $this->err($conn, 'Room tidak ditemukan.');
-        if ($room->state !== Room::S_WAITING)         return $this->err($conn, 'Game sedang berlangsung.');
-        if (count($room->active()) >= 4)              return $this->err($conn, 'Room penuh (max 4).');
+        if (!$room) {
+            $this->err($conn, 'Room tidak ditemukan.');
+            return;
+        }
+        if ($room->state !== Room::S_WAITING) {
+            $this->err($conn, 'Game sedang berlangsung.');
+            return;
+        }
+        if (count($room->active()) >= 4) {
+            $this->err($conn, 'Room penuh (max 4).');
+            return;
+        }
 
         $u = $this->connUser[$id];
         $room->addPlayer($conn, $u['username'], $u['player_id']);
@@ -148,8 +164,14 @@ class GameServer implements MessageComponentInterface
         $room = $code ? ($this->rooms[$code] ?? null) : null;
         if (!$room) return;
 
-        if ($id !== (string)$room->hostConnId) return $this->err($conn, 'Hanya host yang bisa memulai.');
-        if (count($room->active()) < 2)         return $this->err($conn, 'Minimal 2 pemain.');
+        if ($id !== (string)$room->hostConnId) {
+            $this->err($conn, 'Hanya host yang bisa memulai.');
+            return;
+        }
+        if (count($room->active()) < 2) {
+            $this->err($conn, 'Minimal 2 pemain.');
+            return;
+        }
 
         $room->startGame();
         echo "    Game mulai di room $code\n";
