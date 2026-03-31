@@ -15,6 +15,6 @@ $app->route('/ws', $server, ['*']);
 
 echo "\n";
 echo " ⚔  ReflexShowdown WebSocket Server\n";
-echo "    ws://0.0.0.0:{$config['ws']['port']}/ws\n\n";
+echo "    ws://localhost:{$config['ws']['port']}/ws\n\n";
 
 $app->run();

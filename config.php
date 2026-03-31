@@ -11,7 +11,7 @@ return [
         'pass' => '',   // ← ganti ini
     ],
     'ws' => [
-        'host' => '0.0.0.0',
+        'host' => 'localhost',
         'port' => 8080,
     ],
 ];
