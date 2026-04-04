@@ -145,3 +145,18 @@ body {
 .section-title { font-size: .75rem; color: var(--muted); letter-spacing: 2px; margin-bottom: 10px; text-transform: uppercase; }
 .hint { font-size: .8rem; color: var(--muted); }
 .hint a { color: var(--primary); text-decoration: none; }
+
+/* Fase WAIT — tombol aktif tapi berwarna kuning/warning sebagai isyarat "jangan klik" */
+/* Jika diklik saat ini = early click = penalti -1 poin */
+.click-btn.wait-active {
+    background: linear-gradient(135deg, #3a2e00, #4a3a00);
+    border-color: var(--gold);
+    color: var(--gold);
+    cursor: pointer;
+    animation: warn-pulse .9s ease-in-out infinite alternate;
+    letter-spacing: 2px;
+}
+@keyframes warn-pulse {
+    from { box-shadow: 0 0 8px rgba(255,215,0,.2); border-color: #aa8800; }
+    to   { box-shadow: 0 0 22px rgba(255,215,0,.5); border-color: var(--gold); }
+}

@@ -127,7 +127,13 @@ function onRoundWait(msg) {
     currentRound = msg.round; clicked = false;
     $('game-round-label').textContent = `Ronde ${msg.round}/${msg.total}`;
     if (renderer) renderer.setState('wait');
-    resetClickBtn('TUNGGU SINYAL...');
+
+    // Aktifkan tombol saat fase WAIT agar early click bisa terjadi (penalti -1pt)
+    // Sebelumnya disabled → pemain tidak bisa kena penalti sama sekali
+    const btn = $('btn-click');
+    btn.disabled  = false;
+    btn.className = 'click-btn wait-active';
+    btn.textContent = 'TAHAN... JANGAN KLIK DULU!';
 }
 
 function onRoundSignal() {
