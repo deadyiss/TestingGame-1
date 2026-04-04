@@ -6,12 +6,13 @@ use React\EventLoop\LoopInterface;
 use React\EventLoop\TimerInterface;
 
 /**
- * Room mengelola satu sesi permainan beserta state machine-nya.
+ * Room — state machine satu sesi permainan.
  *
- * State machine:
- *   WAITING → ROUND_WAIT → ROUND_SIGNAL → ROUND_RESULT
- *     ↑____________________________|  (looping per ronde)
- *                                      → GAME_OVER setelah ronde terakhir
+ * PERUBAHAN DARI VERSI SEBELUMNYA:
+ *   1. Spam click fix: tambah $hasClicked[] per pemain per ronde.
+ *      Klik pertama (early atau normal) dicatat; klik berikutnya diabaikan.
+ *   2. Early click penalty benar: -1 poin (bukan 0).
+ *   3. State machine lebih ketat: handleClick cek $hasClicked sebelum proses.
  */
 class Room
 {
@@ -31,9 +32,10 @@ class Room
 
     private LoopInterface   $loop;
     private DB              $db;
-    private array           $clicks    = [];  // connId => [rt, is_early, recv_ms]
-    private int             $signalMs  = 0;
-    private ?TimerInterface $timer     = null;
+    private array           $clicks     = [];   // connId => {rt, is_early, recv_ms}
+    private array           $hasClicked = [];   // FIX: track siapa sudah klik ronde ini
+    private int             $signalMs   = 0;
+    private ?TimerInterface $timer      = null;
 
     public function __construct(string $code, LoopInterface $loop, DB $db, int $rounds = 5)
     {
@@ -62,11 +64,16 @@ class Room
     public function removePlayer(ConnectionInterface $conn): void
     {
         $id = $this->connId($conn);
-        if (isset($this->players[$id])) $this->players[$id]['active'] = false;
-        // Jika host pergi, pilih host baru
+        if (isset($this->players[$id])) {
+            $this->players[$id]['active'] = false;
+        }
+        // Jika host pergi, transfer ke pemain aktif berikutnya
         if ($this->hostConnId === $id) {
             $this->hostConnId = null;
-            foreach ($this->active() as $cid => $_) { $this->hostConnId = $cid; break; }
+            foreach ($this->active() as $cid => $_) {
+                $this->hostConnId = $cid;
+                break;
+            }
         }
     }
 
@@ -75,7 +82,10 @@ class Room
         return array_filter($this->players, fn($p) => $p['active']);
     }
 
-    public function isEmpty(): bool { return count($this->active()) === 0; }
+    public function isEmpty(): bool
+    {
+        return count($this->active()) === 0;
+    }
 
     // ── Game flow ─────────────────────────────────────────────────────────────
 
@@ -83,11 +93,13 @@ class Room
     {
         if ($this->state !== self::S_WAITING) return;
         $this->currentRound = 0;
-        foreach ($this->players as &$p) { $p['points'] = 0; $p['rt_history'] = []; }
+        foreach ($this->players as &$p) {
+            $p['points'] = 0;
+            $p['rt_history'] = [];
+        }
         unset($p);
 
         $this->sessionId = $this->db->createSession($this->code, date('Y-m-d H:i:s'));
-
         $this->broadcast(['type' => 'game_start', 'total_rounds' => $this->totalRounds]);
         $this->timer = $this->loop->addTimer(1.5, fn() => $this->startWait());
     }
@@ -95,9 +107,10 @@ class Room
     private function startWait(): void
     {
         $this->currentRound++;
-        $this->clicks   = [];
-        $this->signalMs = 0;
-        $this->state    = self::S_ROUND_WAIT;
+        $this->clicks     = [];
+        $this->hasClicked = [];   // FIX: reset per ronde
+        $this->signalMs   = 0;
+        $this->state      = self::S_ROUND_WAIT;
 
         $this->broadcast([
             'type'  => 'round_wait',
@@ -115,34 +128,53 @@ class Room
         if ($this->state !== self::S_ROUND_WAIT) return;
         $this->state    = self::S_ROUND_SIGNAL;
         $this->signalMs = (int)(microtime(true) * 1000);
-        $this->clicks   = [];
 
+        // Reset hasClicked untuk fase signal (early click tadi sudah tercatat di clicks[])
+        // Pemain yang sudah early click tidak bisa klik lagi di fase signal
         $this->broadcast(['type' => 'round_signal', 'signal_ms' => $this->signalMs]);
 
-        // Timeout 4 detik jika tidak ada yang klik
+        // Timeout 4 detik
         $this->timer = $this->loop->addTimer(4.0, fn() => $this->resolve());
     }
 
+    /**
+     * FIX SPAM CLICK:
+     * hasClicked[] memastikan setiap pemain hanya bisa klik SATU KALI per ronde,
+     * baik di fase WAIT (early) maupun SIGNAL. Klik kedua dst diabaikan.
+     */
     public function handleClick(string $connId): void
     {
         if (!isset($this->players[$connId]) || !$this->players[$connId]['active']) return;
 
+        // FIX: Jika sudah pernah klik ronde ini (early atau normal), abaikan
+        if (isset($this->hasClicked[$connId])) return;
+
         $now = (int)(microtime(true) * 1000);
 
         if ($this->state === self::S_ROUND_WAIT) {
-            // Early click
-            $this->clicks[$connId] = ['rt' => 9999, 'is_early' => true, 'recv_ms' => $now];
-            $this->sendTo($connId, ['type' => 'early_click', 'message' => 'Terlalu cepat! Penalti poin.']);
+            // Early click — catat sekali, kirim penalti
+            $this->hasClicked[$connId] = true;                       // FIX: lock
+            $this->clicks[$connId]     = [
+                'rt'       => 9999,
+                'is_early' => true,
+                'recv_ms'  => $now,
+            ];
+            $this->sendTo($connId, ['type' => 'early_click', 'message' => 'Klik terlalu cepat! -1 poin.']);
             return;
         }
+
         if ($this->state !== self::S_ROUND_SIGNAL) return;
-        if (isset($this->clicks[$connId])) return;
+        if (isset($this->clicks[$connId])) return;  // sudah klik di fase ini
 
         $rt = max(1, $now - $this->signalMs);
-        $this->clicks[$connId] = ['rt' => $rt, 'is_early' => false, 'recv_ms' => $now];
+        $this->hasClicked[$connId] = true;
+        $this->clicks[$connId]     = ['rt' => $rt, 'is_early' => false, 'recv_ms' => $now];
 
-        // Semua pemain aktif sudah klik? Resolve sekarang
-        if (count($this->clicks) >= count($this->active())) {
+        // Semua pemain aktif sudah klik?
+        $activeCnt  = count($this->active());
+        $clickedCnt = count(array_filter($this->clicks, fn($c) => !$c['is_early']));
+        $earlyCnt   = count(array_filter($this->clicks, fn($c) => $c['is_early']));
+        if ($clickedCnt + $earlyCnt >= $activeCnt) {
             $this->cancelTimer();
             $this->resolve();
         }
@@ -154,37 +186,49 @@ class Room
         $this->state = self::S_ROUND_RESULT;
         $this->cancelTimer();
 
-        // Isi pemain yang timeout (tidak klik)
+        // Pemain yang tidak klik sama sekali = timeout
         foreach ($this->active() as $cid => $_) {
             if (!isset($this->clicks[$cid])) {
                 $this->clicks[$cid] = ['rt' => 9999, 'is_early' => false, 'recv_ms' => 0];
             }
         }
 
-        // Urutkan dari RT tercepat
+        // Urutkan: non-early dulu (sort by rt), lalu early click, lalu timeout
         $ranked = [];
         foreach ($this->clicks as $cid => $c) {
             if (!isset($this->players[$cid])) continue;
-            $ranked[] = array_merge(['connId' => $cid,
+            $ranked[] = array_merge([
+                'connId'    => $cid,
                 'username'  => $this->players[$cid]['username'],
-                'player_id' => $this->players[$cid]['player_id']], $c);
+                'player_id' => $this->players[$cid]['player_id'],
+            ], $c);
         }
-        usort($ranked, fn($a, $b) => $a['rt'] <=> $b['rt']);
 
-        // Hitung poin
-        $ptMap   = [3, 2, 1, 0, 0];
+        // Sort: normal klik dulu (is_early=false, rt asc), lalu early/timeout
+        usort($ranked, function ($a, $b) {
+            if ($a['is_early'] !== $b['is_early']) return $a['is_early'] <=> $b['is_early'];
+            return $a['rt'] <=> $b['rt'];
+        });
+
+        /**
+         * FIX POIN:
+         * - Posisi 1 = 3pt, 2 = 2pt, 3 = 1pt, selainnya = 0pt
+         * - Early click: -1pt (tanpa memandang posisi)
+         * Ini sesuai proposal: early click = penalti poin
+         */
+        $ptMap   = [3, 2, 1, 0, 0, 0];
         $results = [];
         $roundId = $this->db->createRound($this->sessionId, $this->currentRound, $this->signalMs);
 
         foreach ($ranked as $i => $r) {
-            $pts = $ptMap[min($i, 4)];
-            if ($r['is_early']) $pts = max(-1, $pts - 1);
+            $pts = $r['is_early'] ? -1 : ($ptMap[min($i, 5)]);  // FIX: early = selalu -1
+            $this->players[$r['connId']]['points']      += $pts;
+            $this->players[$r['connId']]['rt_history'][] = $r['rt'];
 
-            $this->players[$r['connId']]['points']       += $pts;
-            $this->players[$r['connId']]['rt_history'][]  = $r['rt'];
-
-            $this->db->saveResult($roundId, $r['player_id'],
-                $r['recv_ms'], $r['rt'], $r['is_early'], $i + 1, $pts);
+            $this->db->saveResult(
+                $roundId, $r['player_id'], $r['recv_ms'],
+                $r['rt'], $r['is_early'], $i + 1, $pts
+            );
 
             $results[] = [
                 'username' => $r['username'],
@@ -195,7 +239,6 @@ class Room
             ];
         }
 
-        // Kumpulkan skor sementara
         $scores = [];
         foreach ($this->active() as $p) $scores[$p['username']] = $p['points'];
 
@@ -207,7 +250,6 @@ class Room
             'scores'  => $scores,
         ]);
 
-        // Ronde berikutnya atau game over
         $this->timer = $this->loop->addTimer(4.5, function () {
             if ($this->currentRound >= $this->totalRounds) $this->endGame();
             else { $this->state = self::S_WAITING; $this->startWait(); }
@@ -218,24 +260,23 @@ class Room
     {
         $this->state = self::S_GAME_OVER;
 
-        // Cari pemenang (poin tertinggi; seri → avg RT lebih rendah)
         $winner = null; $bestPts = PHP_INT_MIN;
-        foreach ($this->active() as $p) {
+        foreach ($this->active() as $cid => $p) {
             if ($p['points'] > $bestPts ||
-                ($p['points'] === $bestPts && $this->avgRt($p) < $this->avgRt($this->players[$this->connIdOf($winner)]))) {
-                $bestPts = $p['points']; $winner = $p;
+                ($p['points'] === $bestPts && $this->avgRt($p) < $this->avgRt($winner ?? []))) {
+                $bestPts = $p['points'];
+                $winner  = $p;
             }
         }
 
-        // Statistik tiap pemain
         $stats = [];
         foreach ($this->active() as $p) {
-            $rts     = array_filter($p['rt_history'], fn($r) => $r < 9000);
-            $count   = count($rts);
-            $avg     = $count ? (int)round(array_sum($rts) / $count) : 0;
-            $sorted  = $rts; sort($sorted);
-            $trend   = $count >= 4
-                ? (int)round(array_sum(array_slice($sorted, -2)) / 2 - array_sum(array_slice($sorted, 0, 2)) / 2)
+            $rts   = array_filter($p['rt_history'], fn($r) => $r < 9000);
+            $count = count($rts);
+            $avg   = $count ? (int)round(array_sum($rts) / $count) : 0;
+            $sorted = array_values($rts); sort($sorted);
+            $trend = $count >= 4
+                ? (int)round(array_sum(array_slice($sorted, -2))/2 - array_sum(array_slice($sorted,0,2))/2)
                 : 0;
             $stats[$p['username']] = [
                 'points'     => $p['points'],
@@ -258,14 +299,14 @@ class Room
             'stats'  => $stats,
         ]);
 
-        // Reset room setelah 3 detik
         $this->timer = $this->loop->addTimer(3.0, function () {
-            $this->state = self::S_WAITING; $this->sessionId = null;
+            $this->state     = self::S_WAITING;
+            $this->sessionId = null;
             foreach ($this->players as &$p) { $p['points'] = 0; $p['rt_history'] = []; }
         });
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Broadcast / utils ─────────────────────────────────────────────────────
 
     public function broadcast(array $data): void
     {
@@ -277,26 +318,28 @@ class Room
 
     public function sendTo(string $connId, array $data): void
     {
-        if (($this->players[$connId]['active'] ?? false))
+        if ($this->players[$connId]['active'] ?? false) {
             try { $this->players[$connId]['conn']->send(json_encode($data)); } catch (\Throwable $_) {}
+        }
     }
 
-    private function connId(ConnectionInterface $conn): string { return (string)spl_object_id($conn); }
-
-    private function connIdOf(?array $player): string
+    private function connId(ConnectionInterface $conn): string
     {
-        foreach ($this->players as $id => $p) { if ($p === $player) return $id; }
-        return '';
+        return (string)spl_object_id($conn);
     }
 
     private function avgRt(array $player): float
     {
-        $rts = array_filter($player['rt_history'], fn($r) => $r < 9000);
+        if (empty($player)) return PHP_INT_MAX;
+        $rts = array_filter($player['rt_history'] ?? [], fn($r) => $r < 9000);
         return count($rts) ? array_sum($rts) / count($rts) : PHP_INT_MAX;
     }
 
     private function cancelTimer(): void
     {
-        if ($this->timer) { $this->loop->cancelTimer($this->timer); $this->timer = null; }
+        if ($this->timer) {
+            $this->loop->cancelTimer($this->timer);
+            $this->timer = null;
+        }
     }
 }

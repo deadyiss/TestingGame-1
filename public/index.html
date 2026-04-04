@@ -8,18 +8,46 @@
 </head>
 <body>
 
-<!-- ═══ SCREEN: LOGIN ════════════════════════════════════════════════════ -->
+<!-- ═══ SCREEN: AUTH ═══════════════════════════════════════════════════ -->
 <div id="screen-login" class="screen active">
     <div class="card">
         <div class="logo">
             <h1>⚔ Reflex Showdown</h1>
             <p>Duel Refleks Real-Time · Online Multiplayer</p>
         </div>
-        <div class="field">
-            <label>USERNAME</label>
-            <input id="inp-username" type="text" placeholder="Masukkan nama kamu..." maxlength="20">
+        <div class="tab-row">
+            <button class="tab active" id="tab-login"    onclick="switchTab('login')">MASUK</button>
+            <button class="tab"        id="tab-register" onclick="switchTab('register')">DAFTAR</button>
         </div>
-        <button class="btn btn-primary" id="btn-login">MASUK</button>
+        <div id="form-login">
+            <div class="field">
+                <label>USERNAME</label>
+                <input id="inp-login-user" type="text" placeholder="Username kamu..." maxlength="20" autocomplete="username">
+            </div>
+            <div class="field">
+                <label>PASSWORD</label>
+                <input id="inp-login-pass" type="password" placeholder="Password..." autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" id="btn-login">MASUK</button>
+            <p class="mt-8 text-center hint">Belum punya akun? <a href="#" onclick="switchTab('register')">Daftar</a></p>
+        </div>
+        <div id="form-register" style="display:none">
+            <div class="field">
+                <label>USERNAME</label>
+                <input id="inp-reg-user" type="text" placeholder="Username baru (2–20 karakter)" maxlength="20">
+            </div>
+            <div class="field">
+                <label>PASSWORD</label>
+                <input id="inp-reg-pass" type="password" placeholder="Password (min. 6 karakter)">
+            </div>
+            <div class="field">
+                <label>KONFIRMASI PASSWORD</label>
+                <input id="inp-reg-pass2" type="password" placeholder="Ulangi password...">
+            </div>
+            <button class="btn btn-primary" id="btn-register">BUAT AKUN</button>
+            <p class="mt-8 text-center hint">Sudah punya akun? <a href="#" onclick="switchTab('login')">Masuk</a></p>
+        </div>
+        <div id="ws-status" class="ws-status"><span class="dot dot-yellow"></span> Menghubungkan...</div>
     </div>
 </div>
 
@@ -48,10 +76,12 @@
                    style="text-transform:uppercase;letter-spacing:4px;font-size:1.2rem;font-weight:700">
         </div>
         <button class="btn btn-secondary" id="btn-join-room">GABUNG ROOM</button>
+        <hr class="divider">
+        <button class="btn btn-secondary" id="btn-logout" style="opacity:.7">↩ Logout</button>
     </div>
 </div>
 
-<!-- ═══ SCREEN: ROOM (Waiting Room) ════════════════════════════════════ -->
+<!-- ═══ SCREEN: ROOM ════════════════════════════════════════════════════ -->
 <div id="screen-room" class="screen">
     <div class="card">
         <p class="section-title">ROOM AKTIF</p>
@@ -62,76 +92,63 @@
             </div>
             <button class="btn btn-secondary btn-sm" id="btn-copy-code">Salin</button>
         </div>
-
         <p class="section-title">PEMAIN (<span id="room-count">0</span>/4)</p>
         <ul class="player-list" id="room-player-list"></ul>
-
         <p class="section-title" id="rounds-label">RONDE: 5</p>
-
         <div id="host-controls">
             <button class="btn btn-gold" id="btn-start-game" disabled>▶ MULAI GAME</button>
-            <p class="mt-8 text-center" style="font-size:.75rem;color:var(--muted)">
-                Minimal 2 pemain untuk mulai
-            </p>
+            <p class="mt-8 text-center hint">Minimal 2 pemain untuk mulai</p>
         </div>
         <div id="guest-waiting" style="display:none">
-            <p class="text-center" style="color:var(--muted)">⏳ Menunggu host memulai game...</p>
+            <p class="text-center" style="color:var(--muted)">⏳ Menunggu host memulai...</p>
         </div>
-
         <hr class="divider">
         <button class="btn btn-secondary" id="btn-leave-room">← Tinggalkan Room</button>
     </div>
 </div>
 
 <!-- ═══ SCREEN: GAME ════════════════════════════════════════════════════ -->
-<div id="screen-game" class="screen">
-    <div class="game-header">
-        <span id="game-round-label" class="round-label">Ronde 1/5</span>
-        <span id="game-room-label" style="color:var(--muted)">ROOM: ------</span>
+<div id="screen-game" class="screen game-fullscreen">
+    <!-- Header kecil di atas canvas -->
+    <div class="game-hud">
+        <span id="game-round-label" class="round-label">Ronde 0/5</span>
+        <span id="game-room-label">ROOM: ------</span>
     </div>
 
-    <div class="arena" id="arena">
-        <div id="signal-display" class="idle">⚔</div>
-        <button id="btn-click" disabled>TUNGGU...</button>
+    <!-- Canvas arena — ini yang menampilkan game visual -->
+    <canvas id="game-canvas"></canvas>
 
-        <!-- Result overlay -->
-        <div class="result-overlay" id="result-overlay"></div>
-    </div>
-
-    <!-- Pemain strip -->
-    <div class="players-strip" id="players-strip"></div>
+    <!-- Tombol klik di bawah canvas -->
+    <button id="btn-click" class="click-btn" disabled>TUNGGU...</button>
 
     <!-- Scoreboard -->
-    <div class="mt-16">
-        <p class="section-title">SKOR SEMENTARA</p>
+    <div class="scoreboard-wrap">
         <div class="scoreboard" id="scoreboard"></div>
     </div>
 </div>
 
 <!-- ═══ SCREEN: STATS ═══════════════════════════════════════════════════ -->
 <div id="screen-stats" class="screen">
-    <div class="winner-banner" id="winner-banner">
+    <div class="winner-banner">
         <h2>🏆 <span id="winner-name">---</span></h2>
         <p>Pemenang sesi ini!</p>
     </div>
-
     <div id="all-player-stats"></div>
-
     <div class="chart-wrap">
         <h3>GRAFIK REACTION TIME PER RONDE</h3>
-        <canvas id="rt-chart" height="180"></canvas>
+        <canvas id="rt-chart" height="160"></canvas>
     </div>
-
     <div class="btn-row">
         <button class="btn btn-secondary" id="btn-play-again">▶ Main Lagi</button>
         <button class="btn btn-primary"   id="btn-back-menu">← Menu Utama</button>
     </div>
 </div>
 
-<!-- Toast notification -->
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/game-canvas.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
