@@ -7,7 +7,7 @@
  */
 
 // ── PRODUCTION (Railway) — uncomment + isi URL kamu ──────────────────────
-const WS_SERVER_URL = 'wss://testinggame-1-production.up.railway.app';
+// const WS_SERVER_URL = 'wss://testinggame-1-production.up.railway.app';
 
 // ── AUTO DETECT (lokal & LAN) ─────────────────────────────────────────────
 // Jika WS_SERVER_URL belum didefinisikan di atas, pakai deteksi otomatis:
