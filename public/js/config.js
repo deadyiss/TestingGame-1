@@ -7,7 +7,7 @@
  */
 
 // ── PRODUCTION (Railway) — uncomment + isi URL kamu ──────────────────────
-const WS_SERVER_URL = 'wss://testinggame-1-production.up.railway.app';
+// const WS_SERVER_URL = 'wss://testinggame-1-production.up.railway.app';
 
 // ── AUTO DETECT (lokal & LAN) ─────────────────────────────────────────────
 // Jika WS_SERVER_URL belum didefinisikan di atas, pakai deteksi otomatis:
@@ -19,8 +19,7 @@ const WS_SERVER_URL = 'wss://testinggame-1-production.up.railway.app';
 // padahal tidak ada SSL → koneksi selalu gagal dari HP/perangkat lain.
 if (typeof WS_SERVER_URL === 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const hostname = window.location.hostname;
-    window.WS_SERVER_URL = protocol + '://' + hostname + ':8080';
+    window.WS_SERVER_URL = protocol + '://' + window.location.hostname + ':8080';
 }
 
 console.log('[Config] WS Server URL:', WS_SERVER_URL);
